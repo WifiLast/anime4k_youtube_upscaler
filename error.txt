@@ -1,0 +1,17 @@
+[Anime4K YT] Loading model on webgpu...
+userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:2105 [Anime4K YT] Render error: Error: no available backend found. ERR: [webgpu] backend not found.
+    at Tr (userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:7:2064)
+    at async i.create (userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:7:19716)
+    at async Anime4K.getSession (userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:1955:35)
+    at async Anime4K.upscaleFrame (userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:1974:29)
+    at async render (userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:2098:30)
+render @ userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:2105
+await in render
+(anonymous) @ web-animations-next-lite.min.js:96
+requestAnimationFrame
+window.requestAnimationFrame @ web-animations-next-lite.min.js:96
+render @ userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:2085
+(anonymous) @ web-animations-next-lite.min.js:96
+requestAnimationFrame
+
+userscript.html?name=YouTube-Anime4K-ONNX-Upscaler.user.js&id=164c6ef8-9fe4-4828-8bb2-a9b22dc15e49:1954 [Anime4K YT] Loading model on webgpu...

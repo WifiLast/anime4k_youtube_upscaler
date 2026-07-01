@@ -2,23 +2,33 @@
 // @name         YouTube Anime4K ONNX Upscaler
 // @namespace    YouTubeAnime4KUpscaler
 // @version      1.0
-// @description  Upscale YouTube anime videos using Anime4K GAN x2 M (fp16) via ONNX Runtime WebGPU/WASM
+// @description  Upscale YouTube anime videos using Anime4K GAN x2 M (fp16) via ONNX Runtime WASM
 // @author       WifiLast
 // @match        https://www.youtube.com/watch*
 // @run-at       document-idle
 // @grant        none
-// @require      https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js
+// @require      https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort-wasm.min.js
 // ==/UserScript==
 
 (function () {
     'use strict';
 
+    // ---- TRUSTED TYPES BYPASS (YouTube security workaround) ----
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        if (!window.trustedTypes.defaultPolicy) {
+            window.trustedTypes.createPolicy('default', {
+                createHTML: (string) => string,
+                createScriptURL: (string) => string,
+                createScript: (string) => string,
+            });
+        }
+    }
+
     // ---- SETTINGS ----
-    // Host the .onnx file locally, e.g. run: npx serve . --cors
-    // then set this to: 'http://localhost:3000/Anime4K_Upscale_GAN_x2_M_fp16.onnx'
-    const MODEL_URL = 'http://localhost:3000/Anime4K_Upscale_GAN_x2_M_fp16.onnx';
+    // jsDelivr serves GitHub content with CORS headers — required for ONNX Runtime to fetch the model.
+    // GitHub raw URLs (github.com/.../raw/...) are blocked by CORS and will NOT work.
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/WifiLast/anime4k_youtube_upscaler@main/Anime4K_Upscale_GAN_x2_M_fp16.onnx';
     const FPS_LIMIT = 30;   // Frames per second to attempt upscaling (lower = less GPU load)
-    const MAX_WEBGPU_STORAGE_BUFFERS = 64;
     // ------------------
 
     let globalBoard = null;         // Overlay canvas element
@@ -35,8 +45,6 @@
     class Anime4K {
         constructor() {
             this.currentSession = null;
-            this.webgpuAvailable = false;
-            this.webgpuConfigured = false;
         }
 
         async initialize() {
@@ -44,31 +52,15 @@
                 console.error('[Anime4K YT] ONNX Runtime not loaded.');
                 return false;
             }
+            // Disable WASM worker proxy — YouTube's CSP blocks script execution in sandboxed
+            // about:blank frames, which is how ort spawns its WASM worker by default.
             if (ort.env.wasm) {
-                ort.env.wasm.numThreads = Math.min(4, Math.max(1, navigator.hardwareConcurrency || 1));
+                ort.env.wasm.proxy = false;
+                ort.env.wasm.numThreads = 1;
+                ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
             }
-            this.webgpuAvailable = await this.configureWebGpu();
-            console.log(`[Anime4K YT] Backend: ${this.webgpuAvailable ? 'WebGPU' : 'WASM'}`);
+            console.log('[Anime4K YT] Backend: WASM');
             return true;
-        }
-
-        async configureWebGpu() {
-            if (this.webgpuConfigured) return this.webgpuAvailable;
-            this.webgpuConfigured = true;
-            if (!navigator.gpu || !ort?.env?.webgpu) return false;
-            try {
-                const adapter = await navigator.gpu.requestAdapter();
-                if (!adapter) return false;
-                const supportedBuffers = adapter.limits?.maxStorageBuffersPerShaderStage || 8;
-                const requestedBuffers = Math.min(MAX_WEBGPU_STORAGE_BUFFERS, supportedBuffers);
-                const requiredLimits = {};
-                if (requestedBuffers > 8) requiredLimits.maxStorageBuffersPerShaderStage = requestedBuffers;
-                ort.env.webgpu.deviceOptions = { powerPreference: 'high-performance', requiredLimits };
-                return true;
-            } catch (err) {
-                console.warn('[Anime4K YT] WebGPU setup failed, falling back to WASM.', err);
-                return false;
-            }
         }
 
         float32ToFloat16(float32Array) {
@@ -122,13 +114,12 @@
 
         async getSession() {
             if (this.currentSession) return this.currentSession;
-            const backend = this.webgpuAvailable ? 'webgpu' : 'wasm';
-            console.log(`[Anime4K YT] Loading model on ${backend}...`);
+            console.log('[Anime4K YT] Loading model on wasm...');
             this.currentSession = await ort.InferenceSession.create(MODEL_URL, {
-                executionProviders: [backend],
+                executionProviders: ['wasm'],
                 graphOptimizationLevel: 'all'
             });
-            console.log('[Anime4K YT] Model loaded successfully.');
+            console.log('[Anime4K YT] Model loaded successfully on WASM.');
             return this.currentSession;
         }
 
@@ -154,9 +145,9 @@
 
             // Pack pixels into planar NCHW format
             for (let i = 0; i < totalPixels; i++) {
-                inputBuffer[i]                      = data[i * 4]     / 255.0; // R
-                inputBuffer[totalPixels + i]        = data[i * 4 + 1] / 255.0; // G
-                inputBuffer[2 * totalPixels + i]    = data[i * 4 + 2] / 255.0; // B
+                inputBuffer[i] = data[i * 4] / 255.0; // R
+                inputBuffer[totalPixels + i] = data[i * 4 + 1] / 255.0; // G
+                inputBuffer[2 * totalPixels + i] = data[i * 4 + 2] / 255.0; // B
                 if (channelsNeeded === 4) inputBuffer[3 * totalPixels + i] = data[i * 4 + 3] / 255.0;
             }
 
@@ -190,9 +181,9 @@
             const outPixels = outH * outW;
 
             for (let i = 0; i < outPixels; i++) {
-                outImgData.data[i * 4]     = Math.min(255, Math.max(0, outputData[i]                   * 255));
-                outImgData.data[i * 4 + 1] = Math.min(255, Math.max(0, outputData[outPixels + i]       * 255));
-                outImgData.data[i * 4 + 2] = Math.min(255, Math.max(0, outputData[2 * outPixels + i]   * 255));
+                outImgData.data[i * 4] = Math.min(255, Math.max(0, outputData[i] * 255));
+                outImgData.data[i * 4 + 1] = Math.min(255, Math.max(0, outputData[outPixels + i] * 255));
+                outImgData.data[i * 4 + 2] = Math.min(255, Math.max(0, outputData[2 * outPixels + i] * 255));
                 outImgData.data[i * 4 + 3] = (outC === 4)
                     ? Math.min(255, Math.max(0, outputData[3 * outPixels + i] * 255))
                     : 255;
@@ -269,12 +260,14 @@
         try {
             const upscaled = await upscaler.upscaleFrame(globalMovOrig);
             if (upscaled) {
-                globalBoard.width  = upscaled.width;
+                globalBoard.width = upscaled.width;
                 globalBoard.height = upscaled.height;
                 globalBoard.getContext('2d').drawImage(upscaled, 0, 0);
             }
         } catch (err) {
             console.error('[Anime4K YT] Render error:', err);
+            // Clear the session so getSession() can recreate it (e.g. after a GPU device loss)
+            upscaler.currentSession = null;
         }
         isRendering = false;
     }
